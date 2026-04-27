@@ -1,0 +1,43 @@
+2026-04-20 21:48:25,118 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.131"}
+2026-04-20 21:48:28,029 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar/leaguegroup - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.131"}
+2026-04-20 21:48:32,655 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.131"}
+2026-04-20 21:48:35,716 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar/leaguegroup - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.131"}
+2026-04-20 23:02:05,573 - ERROR - Exception while handling an update: httpx.ReadError: 
+2026-04-21 06:05:10,617 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:11,643 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:13,157 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:15,432 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:18,835 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:23,910 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:31,522 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:05:42,933 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:06:00,043 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:06:25,684 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:06:55,701 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:07:25,712 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:07:55,735 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:08:25,752 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:08:55,769 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:09:25,787 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:09:55,804 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-21 06:10:25,825 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:18,344 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:19,358 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:20,872 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:23,147 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:26,530 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:31,610 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:39,220 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:05:50,624 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:06:07,728 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:06:33,373 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:07:03,381 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:07:33,402 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:08:03,423 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:08:33,440 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:09:03,451 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:09:33,467 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:10:03,486 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 06:10:33,503 - ERROR - Exception while handling an update: httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-22 19:11:27,521 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.151"}
+2026-04-22 19:11:29,054 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar/leaguegroup - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.151"}
