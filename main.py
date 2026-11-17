@@ -9,44 +9,12 @@ from pathlib import Path
 import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from events import format_events
 
 try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
-
-
-MANUAL_EVENTS = """Current Events / Announcements
-
-DRAGON ESCAPE SEASON - March 1-31
-
-March 1-31: Gold Pass
-Boost your village with bonus perks, items, and unlock the Dragonscale Prince Hero Skin.
-
-March 1-7: Dragon Duke Unleashed
-Use this Hero and his Equipment at their max power allowed by your Town Hall level.
-
-March 1-31: Dragon Duke Challenge Levels
-Play challenge levels in three batches throughout the month and unlock rewards.
-
-March 3-31: Dragon troop events
-Expect rotating Dragon troop boosts throughout the season.
-
-March 3-31: Dragon Escape Scenery
-Seasonal scenery available during the event window.
-
-March 5-31: Dragonscale Hero Skins
-Seasonal Hero skins available during the event window.
-
-March 7-14: Dragon Dash Medal Event
-Earn event currency and unlock extra rewards.
-
-March 13-20: Clan Rush
-Collect Gold with your clan and complete the reward track.
-
-March 22-28: Clan Games - Dragon Edition
-Dragon-related tasks appear more often during Clan Games."""
-
 
 PROCESSING_MESSAGES = [
     "Fetching the latest war data...",
@@ -56,7 +24,7 @@ PROCESSING_MESSAGES = [
 ]
 
 
-# Optional local development support. Railway provides env vars directly.
+# Load local environment values from .env when available.
 if load_dotenv and Path(".env").exists():
     load_dotenv()
 
@@ -135,15 +103,32 @@ def load_storage():
     path = ensure_storage_exists()
     try:
         with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except Exception:
-        return {"warLogs": []}
+            data = json.load(file)
+    except json.JSONDecodeError as exc:
+        logger.error(f"STORAGE_READ_ERROR: Invalid JSON in {path}: {exc}")
+        raise RuntimeError("War history storage is unreadable. Existing history was not overwritten.") from exc
+    except OSError as exc:
+        logger.error(f"STORAGE_READ_ERROR: Could not read {path}: {exc}")
+        raise RuntimeError("War history storage could not be read. Existing history was not overwritten.") from exc
+
+    if not isinstance(data, dict):
+        logger.error(f"STORAGE_READ_ERROR: Expected object in {path}, got {type(data).__name__}")
+        raise RuntimeError("War history storage has an invalid format. Existing history was not overwritten.")
+
+    war_logs = data.setdefault("warLogs", [])
+    if not isinstance(war_logs, list):
+        logger.error(f"STORAGE_READ_ERROR: warLogs is not a list in {path}")
+        raise RuntimeError("War history storage has an invalid warLogs format. Existing history was not overwritten.")
+
+    return data
 
 
 def save_storage(data):
     path = ensure_storage_exists()
-    with open(path, "w", encoding="utf-8") as file:
+    temp_path = path.with_name(f"{path.name}.tmp")
+    with open(temp_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=2)
+    os.replace(temp_path, path)
     logger.info(f"STORAGE_SAVED: {path}")
 
 
@@ -200,6 +185,27 @@ def get_random_processing_message():
     return random.choice(PROCESSING_MESSAGES)
 
 
+async def reply_long_text(update: Update, text: str, limit: int = 4000):
+    parts = []
+    remaining = text.strip()
+
+    while len(remaining) > limit:
+        split_at = remaining.rfind("\n\n", 0, limit)
+        if split_at == -1:
+            split_at = remaining.rfind("\n", 0, limit)
+        if split_at == -1:
+            split_at = limit
+
+        parts.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].strip()
+
+    if remaining:
+        parts.append(remaining)
+
+    for part in parts:
+        await update.message.reply_text(part)
+
+
 def coc_api(endpoint: str):
     url = f"https://api.clashofclans.com/v1/{endpoint}"
     headers = {"Authorization": f"Bearer {COC_TOKEN}"}
@@ -220,7 +226,7 @@ def coc_api(endpoint: str):
             error_payload = {"message": response.text}
 
         if response.status_code == 403 and error_payload.get("reason") == "accessDenied.invalidIp":
-            logger.error("COC_API_IP_WHITELIST_REQUIRED: Add Railway public IP to Clash API key whitelist.")
+            logger.error("COC_API_IP_WHITELIST_REQUIRED: Add your current network public IP to the Clash API key whitelist.")
 
         return {
             "_api_error": {
@@ -258,15 +264,6 @@ async def coc_api_async(endpoint: str):
 
 async def fetch_current_war_async():
     return await coc_api_async(f"clans/{CLAN_TAG}/currentwar")
-
-
-async def fetch_league_group_async():
-    return await coc_api_async(f"clans/{CLAN_TAG}/currentwar/leaguegroup")
-
-
-async def fetch_league_war_by_tag_async(war_tag: str):
-    encoded_war_tag = war_tag.replace("#", "%23")
-    return await coc_api_async(f"clanwarleagues/wars/{encoded_war_tag}")
 
 
 def get_api_error(data: dict | None):
@@ -326,14 +323,14 @@ def get_war_status_indicator(clan_data: dict, opponent_data: dict):
     opponent_destruction = opponent_data.get("destructionPercentage", 0)
 
     if clan_stars > opponent_stars:
-        return "📈 WINNING"
+        return "WINNING"
     if clan_stars < opponent_stars:
-        return "📉 LOSING"
+        return "LOSING"
     if clan_destruction > opponent_destruction:
-        return "📈 WINNING (Destruction Advantage)"
+        return "WINNING (Destruction Advantage)"
     if clan_destruction < opponent_destruction:
-        return "📉 LOSING (Destruction Disadvantage)"
-    return "⚖️ TIED"
+        return "LOSING (Destruction Disadvantage)"
+    return "TIED"
 
 
 def build_api_error_message(data: dict | None):
@@ -351,6 +348,22 @@ def build_api_error_message(data: dict | None):
             f"Current public IP: {current_ip}\n"
             "Add this IP to the API key whitelist in the Clash of Clans developer dashboard, "
             "then try the war command again."
+        )
+
+    if error.get("reason") == "accessDenied" and "currentwar" in error.get("endpoint", ""):
+        return (
+            "Unable to show current war data.\n"
+            "Reason: Clash of Clans is denying access to this clan's war data.\n\n"
+            "Fix: A clan Leader or Co-Leader must open Clash of Clans and set the clan War Log to Public. "
+            "After that, try /war again."
+        )
+
+    if error.get("reason") == "accessDenied" and "warlog" in error.get("endpoint", ""):
+        return (
+            "Unable to show war log data.\n"
+            "Reason: Clash of Clans is denying access to this clan's war log.\n\n"
+            "Fix: A clan Leader or Co-Leader must open Clash of Clans and set the clan War Log to Public. "
+            "After that, try the command again."
         )
 
     return (
@@ -392,42 +405,8 @@ def is_live_war_state(war_data: dict, include_recent_ended: bool = False):
     return False
 
 
-def is_clan_in_war(war_data: dict):
-    clan_tag = RAW_CLAN_TAG.upper() if RAW_CLAN_TAG else None
-    if not war_data or not clan_tag or get_api_error(war_data):
-        return False
-
-    war_clan_tag = war_data.get("clan", {}).get("tag", "").upper()
-    war_opponent_tag = war_data.get("opponent", {}).get("tag", "").upper()
-    return clan_tag in {war_clan_tag, war_opponent_tag}
-
-
 async def fetch_live_war_async(include_recent_ended: bool = False):
     current_war = await fetch_current_war_async()
-    if is_live_war_state(current_war, include_recent_ended=include_recent_ended):
-        return current_war
-
-    league_group = await fetch_league_group_async()
-    if not league_group or league_group.get("reason"):
-        return current_war
-
-    rounds = league_group.get("rounds", [])
-    if not rounds:
-        return current_war
-
-    war_tags_to_check = []
-    for round_info in reversed(rounds):
-        for war_tag in round_info.get("warTags", []):
-            if war_tag and war_tag != "#0":
-                war_tags_to_check.append(war_tag)
-
-    for war_tag in war_tags_to_check:
-        league_war = await fetch_league_war_by_tag_async(war_tag)
-        if not is_clan_in_war(league_war):
-            continue
-        if is_live_war_state(league_war, include_recent_ended=include_recent_ended):
-            return league_war
-
     return current_war
 
 
@@ -529,6 +508,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>War</b>\n"
         "<b>/war</b> - Current war status\n"
         "<b>/warstats</b> - Detailed war statistics\n"
+        "<b>/warlogupdate</b> - Save the ended war to history\n"
         "<b>/warlog</b> - View the last saved war log\n"
         "<b>/warhistory</b> - View the last 5 saved wars\n"
     )
@@ -548,7 +528,6 @@ async def adminhelp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     help_text = (
         "<b>Admin Commands</b>\n\n"
-        "<b>/warlogupdate</b> - Save the ended war to history\n"
         "<b>/addwarlogmanually &lt;clan&gt; &lt;opponent&gt; &lt;result&gt; &lt;clan_stars&gt; "
         "&lt;opponent_stars&gt; &lt;clan_destruction&gt; &lt;opponent_destruction&gt;</b> - "
         "Add a war log entry manually"
@@ -567,19 +546,39 @@ async def clan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         processing_message = await update.message.reply_text(get_random_processing_message())
         data = await coc_api_async(f"clans/{CLAN_TAG}")
 
+        api_error_message = build_api_error_message(data)
+        if api_error_message:
+            await processing_message.delete()
+            await update.message.reply_text(api_error_message)
+            return
+
         if not data:
             await processing_message.delete()
             await update.message.reply_text("Unable to fetch clan data.")
             return
 
+        location = data.get("location", {}).get("name", "N/A")
+        war_league = data.get("warLeague", {}).get("name", "N/A")
+        capital_hall = data.get("clanCapital", {}).get("capitalHallLevel", "N/A")
+        description = data.get("description", "").strip()
+
         message = (
-            f"Clan Stats\n"
+            "Clan Profile\n\n"
             f"Name: {data.get('name', 'N/A')}\n"
+            f"Tag: {data.get('tag', 'N/A')}\n"
             f"Level: {data.get('clanLevel', 'N/A')}\n"
+            f"Members: {data.get('members', 'N/A')} / 50\n"
+            f"Location: {location}\n"
             f"Trophies: {data.get('clanPoints', 'N/A')}\n"
-            f"War Wins: {data.get('warWins', 'N/A')}\n"
-            f"Members: {data.get('members', 'N/A')}"
+            f"Required Trophies: {data.get('requiredTrophies', 'N/A')}\n"
+            f"War League: {war_league}\n"
+            f"War Record: {data.get('warWins', 'N/A')}W / {data.get('warLosses', 'N/A')}L / "
+            f"{data.get('warTies', 'N/A')}D\n"
+            f"War Win Streak: {data.get('warWinStreak', 'N/A')}\n"
+            f"Capital Hall: {capital_hall}"
         )
+        if description:
+            message += f"\n\nDescription:\n{description}"
 
         await processing_message.delete()
         await update.message.reply_text(message)
@@ -622,20 +621,20 @@ async def war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_indicator = get_war_status_indicator(clan_data, opponent_data)
 
         message = (
-            "⚔️ WAR BATTLE STATUS ⚔️\n\n"
-            f"🏰 {clan_data.get('name', 'N/A')}\n"
-            f"⭐ {clan_data.get('stars', 0)}   ⚔️ {clan_attacks}/{max_attacks}\n\n"
-            "🆚\n\n"
-            f"🏰 {opponent_data.get('name', 'N/A')}\n"
-            f"⭐ {opponent_data.get('stars', 0)}   ⚔️ {opponent_attacks}/{max_attacks}\n\n"
-            "━━━━━━━━━━━━━━\n"
+            "WAR BATTLE STATUS\n\n"
+            f"{clan_data.get('name', 'N/A')}\n"
+            f"Stars: {clan_data.get('stars', 0)} | Attacks: {clan_attacks}/{max_attacks}\n\n"
+            "VS\n\n"
+            f"{opponent_data.get('name', 'N/A')}\n"
+            f"Stars: {opponent_data.get('stars', 0)} | Attacks: {opponent_attacks}/{max_attacks}\n\n"
+            "--------------\n"
             f"{status_indicator}\n"
-            f"📊 Status: {data.get('state', 'N/A')}\n"
-            f"📉 Score: {clan_data.get('stars', 0)} - {opponent_data.get('stars', 0)}\n"
-            "🎯 Attacks Used:\n"
-            f"• Us: {clan_attacks} / {max_attacks}\n"
-            f"• Enemy: {opponent_attacks} / {max_attacks}\n"
-            "━━━━━━━━━━━━━━"
+            f"Status: {data.get('state', 'N/A')}\n"
+            f"Score: {clan_data.get('stars', 0)} - {opponent_data.get('stars', 0)}\n"
+            "Attacks Used:\n"
+            f"- Us: {clan_attacks} / {max_attacks}\n"
+            f"- Enemy: {opponent_attacks} / {max_attacks}\n"
+            "--------------"
         )
 
         await processing_message.delete()
@@ -699,27 +698,27 @@ async def warstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 time_remaining = "N/A"
 
         message = (
-            "📊 WAR STATISTICS\n\n"
-            f"⚔️ {clan_name} vs {opponent_name}\n\n"
-            "━━━━━━━━━━━━━━\n"
+            "WAR STATISTICS\n\n"
+            f"{clan_name} vs {opponent_name}\n\n"
+            "--------------\n"
             f"{status_indicator}\n\n"
-            f"🏰 {clan_name}\n"
-            f"⭐ Stars: {clan_stars}\n"
-            f"💥 Destruction: {clan_destruction:.2f}%\n"
-            f"⚔️ Attacks: {clan_attacks} / {max_attacks}\n"
-            f"🎯 Remaining: {max(0, max_attacks - clan_attacks)}\n"
-            f"🔥 3⭐ Attacks: {clan_3star}\n\n"
-            f"🏰 {opponent_name}\n"
-            f"⭐ Stars: {opponent_stars}\n"
-            f"💥 Destruction: {opponent_destruction:.2f}%\n"
-            f"⚔️ Attacks: {opponent_attacks} / {max_attacks}\n"
-            f"🎯 Remaining: {max(0, max_attacks - opponent_attacks)}\n"
-            f"🔥 3⭐ Attacks: {opponent_3star}\n\n"
-            "━━━━━━━━━━━━━━\n"
-            "⚙️ WAR INFO\n"
-            f"👥 Attacks per Player: {attacks_per_member}\n"
-            f"⏳ Time Remaining: {time_remaining}\n"
-            "━━━━━━━━━━━━━━"
+            f"{clan_name}\n"
+            f"Stars: {clan_stars}\n"
+            f"Destruction: {clan_destruction:.2f}%\n"
+            f"Attacks: {clan_attacks} / {max_attacks}\n"
+            f"Remaining: {max(0, max_attacks - clan_attacks)}\n"
+            f"3-Star Attacks: {clan_3star}\n\n"
+            f"{opponent_name}\n"
+            f"Stars: {opponent_stars}\n"
+            f"Destruction: {opponent_destruction:.2f}%\n"
+            f"Attacks: {opponent_attacks} / {max_attacks}\n"
+            f"Remaining: {max(0, max_attacks - opponent_attacks)}\n"
+            f"3-Star Attacks: {opponent_3star}\n\n"
+            "--------------\n"
+            "WAR INFO\n"
+            f"Attacks per Player: {attacks_per_member}\n"
+            f"Time Remaining: {time_remaining}\n"
+            "--------------"
         )
 
         await processing_message.delete()
@@ -737,34 +736,15 @@ async def warstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def events(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    logger.info(f"CMD_EXECUTED: /events - User: {user_id}")
+    command_name = update.message.text.split()[0] if update.message and update.message.text else "/events"
+    logger.info(f"CMD_EXECUTED: {command_name} - User: {user_id}")
 
-    processing_message = None
     try:
-        processing_message = await update.message.reply_text(get_random_processing_message())
-        data = await coc_api_async(f"clans/{CLAN_TAG}/events")
-
-        if data and data.get("items"):
-            lines = ["Current Events / Announcements"]
-            for event in data.get("items", []):
-                name = event.get("name", "Unknown Event")
-                description = event.get("description", "")
-                lines.append(f"{name}: {description}" if description else name)
-            message = "\n\n".join(lines)
-        else:
-            message = MANUAL_EVENTS
-
-        await processing_message.delete()
-        await update.message.reply_text(message)
-        logger.info(f"CMD_SUCCESS: /events - User: {user_id}")
+        await reply_long_text(update, format_events())
+        logger.info(f"CMD_SUCCESS: {command_name} - User: {user_id}")
     except Exception as exc:
-        logger.error(f"CMD_EXCEPTION: /events - {exc} - User: {user_id}")
-        if processing_message:
-            try:
-                await processing_message.delete()
-            except Exception:
-                pass
-        await update.message.reply_text(MANUAL_EVENTS)
+        logger.error(f"CMD_EXCEPTION: {command_name} - {exc} - User: {user_id}")
+        await update.message.reply_text("Unable to show events right now.")
 
 
 async def warlogupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -809,6 +789,9 @@ async def warlogupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await update.message.reply_text("Failed to save war to history.")
+    except RuntimeError as exc:
+        logger.error(f"CMD_STORAGE_ERROR: /warlogupdate - {exc} - User: {user_id}")
+        await update.message.reply_text(str(exc))
     except Exception as exc:
         logger.error(f"CMD_EXCEPTION: /warlogupdate - {exc} - User: {user_id}")
         await update.message.reply_text("Unable to update war log.")
@@ -866,6 +849,14 @@ async def warhistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await processing_message.delete()
         await update.message.reply_text("\n\n".join(lines))
         logger.info(f"CMD_SUCCESS: /warhistory - User: {user_id}")
+    except RuntimeError as exc:
+        logger.error(f"CMD_STORAGE_ERROR: /warhistory - {exc} - User: {user_id}")
+        if processing_message:
+            try:
+                await processing_message.delete()
+            except Exception:
+                pass
+        await update.message.reply_text(str(exc))
     except Exception as exc:
         logger.error(f"CMD_EXCEPTION: /warhistory - {exc} - User: {user_id}")
         if processing_message:
@@ -928,6 +919,14 @@ async def addwarlogmanually(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{clan_destruction:.1f}%-{opponent_destruction:.1f}%"
         )
         logger.info(f"CMD_SUCCESS: /addwarlogmanually - User: {user_id}")
+    except RuntimeError as exc:
+        logger.error(f"CMD_STORAGE_ERROR: /addwarlogmanually - {exc} - User: {user_id}")
+        if processing_message:
+            try:
+                await processing_message.delete()
+            except Exception:
+                pass
+        await update.message.reply_text(str(exc))
     except ValueError:
         if processing_message:
             await processing_message.delete()
@@ -977,6 +976,7 @@ def main():
     app.add_handler(CommandHandler("clan", clan))
     app.add_handler(CommandHandler("war", war))
     app.add_handler(CommandHandler("warstats", warstats))
+    app.add_handler(CommandHandler("event", events))
     app.add_handler(CommandHandler("events", events))
     app.add_handler(CommandHandler("warlogupdate", warlogupdate))
     app.add_handler(CommandHandler("warlog", warlog))
@@ -987,14 +987,7 @@ def main():
     logger.info("BOT_STARTED")
     print("BOT_STARTED")
 
-    try:
-        public_ip = requests.get("https://api.ipify.org", timeout=10).text.strip()
-        print(f"PUBLIC_IP: {public_ip}")
-        logger.info(f"PUBLIC_IP: {public_ip}")
-    except Exception as exc:
-        print(f"PUBLIC_IP_ERROR: {exc}")
-        logger.warning(f"PUBLIC_IP_ERROR: {exc}")
-
+    print("Mode: Local polling (no hosting platform required).")
     print("ClashBot is running...")
     print("Use /help in Telegram to see the available commands.")
     app.run_polling()
