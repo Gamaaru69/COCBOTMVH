@@ -1,3 +1,16 @@
+# Secrets
 .env
+.env.*
+_env
+_env.txt
+
+# Python
 __pycache__/
 *.pyc
+.venv/
+venv/
+
+# Runtime data
+logs/
+player_cache.json
+*.tmp

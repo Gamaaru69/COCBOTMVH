@@ -1,1 +1,0 @@
-2026-04-15 22:12:10,334 - ERROR - API_ERROR: clans/%239G8RCVRV/currentwar - Status 403 - {"reason":"accessDenied.invalidIp","message":"Invalid authorization: API key does not allow access from IP 43.231.28.184"}
