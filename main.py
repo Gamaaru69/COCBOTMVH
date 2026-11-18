@@ -10,6 +10,8 @@ import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from events import format_events
+from clan_monitor import monitor_loop, split_message
+from war_monitor import war_monitor_loop
 
 try:
     from dotenv import load_dotenv
@@ -962,6 +964,30 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(traceback.format_exc())
 
 
+_background_tasks = set()
+
+
+async def start_clan_monitor(application: Application):
+    if GROUP_CHAT_ID is None:
+        logger.warning("MONITOR_DISABLED: GROUP_CHAT_ID is not set")
+        return
+
+    async def send(text):
+        for chunk in split_message(text):
+            await application.bot.send_message(chat_id=GROUP_CHAT_ID, text=chunk)
+
+    for coro in (
+        monitor_loop(coc_api_async, send, logger, CLAN_TAG),
+        war_monitor_loop(coc_api_async, send, logger, CLAN_TAG),
+    ):
+        task = asyncio.create_task(coro)
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    logger.info("MONITOR_STARTED")
+    logger.info("WAR_MONITOR_STARTED")
+
+
 def main():
     validate_configuration()
     ensure_storage_exists()
@@ -969,14 +995,13 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(start_clan_monitor).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("adminhelp", adminhelp))
     app.add_handler(CommandHandler("clan", clan))
     app.add_handler(CommandHandler("war", war))
     app.add_handler(CommandHandler("warstats", warstats))
-    app.add_handler(CommandHandler("event", events))
     app.add_handler(CommandHandler("events", events))
     app.add_handler(CommandHandler("warlogupdate", warlogupdate))
     app.add_handler(CommandHandler("warlog", warlog))
